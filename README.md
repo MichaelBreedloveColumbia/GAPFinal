@@ -33,7 +33,8 @@ TextureOverride: If 0, the planet/particle has no custom texture. 1 = Mercury, 2
 
 PlanetColor: The color of the planet/particle. Only used if TextureOverride is set to 0.
 
-##C amera Controls
+## Camera Controls
+
 X: The camera's position on the X axis (always looks at the sun/core particle).
 
 Y: The camera's position on the Y axis (always looks at the sun/core particle).
