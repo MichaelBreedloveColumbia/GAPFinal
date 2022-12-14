@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Orbiter</title>
+    <link rel="stylesheet" href="css/main.css">
+    <script type="text/javascript" src="./node_modules/dat.gui/build/dat.gui.min.js"></script>
+    <div id="info">Use the control panel to customize a planet, then right-click or click the middle-mouse to place it at your cursor.</div>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from './js/three.module.js';
+
+        var scene = new THREE.Scene();
+        
+        var projCam = new THREE.PerspectiveCamera(50,window.innerWidth/window.innerHeight,0.1,1000);
+        SetCameraDefaults();
+
+        function SetCameraDefaults()
+        {
+            projCam.position.z = 140;
+            projCam.position.y = 36;
+            projCam.rotation.x = 6;
+            projCam.updateProjectionMatrix();
+        }
+        
+        var renderer = new THREE.WebGLRenderer({antialias:true});
+        renderer.setClearColor("#0f1112");
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        window.addEventListener('resize',() => {
+            renderer.setSize(width,height);
+            camera.aspect = width/height;
+            camera.updateProjectionMatrix();
+        })
+
+        //const controls = new OrbitControls(projCam, renderer.domElement)
+        
+        var light = new THREE.PointLight(0xFFFFFF,2,1000);
+        light.position.set(0,0,0);
+        scene.add(light);
+
+        var geo_Sun = new THREE.SphereGeometry(6, 8, 8);
+        var mat_Sun = new THREE.MeshBasicMaterial( { map: new THREE.TextureLoader().load('./images/sun.jpg') } );
+        var mesh_Sun = new THREE.Mesh(geo_Sun, mat_Sun);
+        scene.add(mesh_Sun);
+
+        scene.background = new THREE.TextureLoader().load('./images/space.png');
+
+        const planets = [];
+        const orbits = [];
+        const orbitsX = [];
+        const orbitsY = [];
+        const orbitsZ = [];
+        const axisX = [];
+        const axisY = [];
+        const axisZ = [];
+
+        const TextureOverride = {TextureOverride: 0};
+
+        var Radius = {Radius: 1.0};
+        var WidthSegments = {WidthSegments: 1};
+        var HeightSegments = {HeightSegments: 1};
+        var PlanetColor = { PlanetColor: '#FF0000' };
+        var OrbitX = {OrbitX: 0.0};
+        var OrbitY = {OrbitY: 0.0};
+        var OrbitZ = {OrbitZ: 0.0};
+        var AxisRotationX = {AxisRotationX: 0.0};
+        var AxisRotationY = {AxisRotationY: 0.0};
+        var AxisRotationZ = {AxisRotationZ: 0.0};
+        var ClearAll = {ClearAll: 0};
+        var TimeScale = {TimeScale: 1.0};
+        var Metalness = {Metalness: 1.0};
+        var Roughness = {Roughness: 1.0};
+        var FullBright = {FullBright: 0};
+
+        var gui = new dat.gui.GUI();
+
+        const dimensionsFolder = gui.addFolder('Planet Dimensions');
+        dimensionsFolder.add(Radius, 'Radius', 0, 30, 0.1);
+        dimensionsFolder.add(WidthSegments, 'WidthSegments', 0, 64, 1);
+        dimensionsFolder.add(HeightSegments, 'HeightSegments', 0, 64, 1);
+        dimensionsFolder.open();
+
+        const orbitFolder = gui.addFolder('Orbit Speeds');
+        orbitFolder.add(OrbitX, 'OrbitX', -0.5, 0.5, 0.0002);
+        orbitFolder.add(OrbitY, 'OrbitY', -0.5, 0.5, 0.0002);
+        orbitFolder.add(OrbitZ, 'OrbitZ', -0.5, 0.5, 0.0002);
+        orbitFolder.add(AxisRotationX, 'AxisRotationX', -1.0, 1.0, 0.01);
+        orbitFolder.add(AxisRotationY, 'AxisRotationY', -1.0, 1.0, 0.01);
+        orbitFolder.add(AxisRotationZ, 'AxisRotationZ', -1.0, 1.0, 0.01);
+        orbitFolder.open();
+
+        const materialFolder = gui.addFolder('Texture Properties');
+        materialFolder.add(Metalness, 'Metalness', 0.0, 10.0, 0.1);
+        materialFolder.add(Roughness, 'Roughness', 0.0, 10.0, 0.1);
+        materialFolder.add(FullBright, 'FullBright', 0, 1, 1);
+        materialFolder.add(TextureOverride, 'TextureOverride', 0, 9, 1);
+        materialFolder.addColor(PlanetColor, 'PlanetColor');
+        materialFolder.open();
+
+        const cameraFolder = gui.addFolder('Camera Controls');
+        cameraFolder.add(projCam.position, 'x', -360, 360, 0.5);
+        cameraFolder.add(projCam.position, 'y', -360, 360, 0.5);
+        cameraFolder.add(projCam.position, 'z', -360, 360, 0.5);
+
+        gui.add(TimeScale, 'TimeScale', 0.0, 2.0, 0.1);
+        gui.add(ClearAll, 'ClearAll', 0, 1, 1);
+
+        const mouse = new THREE.Vector2(); 
+        const intersectionPoint = new THREE.Vector3(); 
+        const planeNormal = new THREE.Vector3(); 
+        const plane = new THREE.Plane(); 
+        const raycaster = new THREE.Raycaster();
+        
+        window.addEventListener('mousemove', function(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            planeNormal.copy(projCam.position).normalize();
+            plane.setFromNormalAndCoplanarPoint(planeNormal, scene.position);
+            raycaster.setFromCamera(mouse, projCam);
+            raycaster.ray.intersectPlane(plane, intersectionPoint);
+        });
+
+        window.addEventListener('pointerdown', function(e) {
+            if (e.button == 0)
+                return;
+
+            e.preventDefault();
+            AddParticle();
+        });
+
+        function AddParticle()
+        {
+            const sphereGeo = new THREE.SphereGeometry(Radius.Radius, WidthSegments.WidthSegments, HeightSegments.HeightSegments);
+
+            var sphereMat;
+            
+            if (TextureOverride.TextureOverride > 0)
+            {
+                if (FullBright.FullBright == 0)
+                {
+                    sphereMat = new THREE.MeshStandardMaterial({ map: new THREE.TextureLoader().load(GetPlanetTexture()), metalness: Metalness.Metalness, roughness: Roughness.Roughness });
+                }
+                else
+                {
+                    sphereMat = new THREE.MeshBasicMaterial({ map: new THREE.TextureLoader().load(GetPlanetTexture()), metalness: Metalness.Metalness, roughness: Roughness.Roughness });
+                }
+            }
+            else
+            {
+                if (FullBright.FullBright == 0)
+                {
+                    sphereMat = new THREE.MeshStandardMaterial({ color: PlanetColor.PlanetColor, metalness: Metalness.Metalness, roughness: Roughness.Roughness });
+                }
+                else
+                {
+                    sphereMat = new THREE.MeshBasicMaterial({ color: PlanetColor.PlanetColor, metalness: Metalness.Metalness, roughness: Roughness.Roughness });
+                }
+            }
+
+            const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+            scene.add(sphereMesh);
+            planets[planets.length] = sphereMesh;
+            sphereMesh.position.copy(intersectionPoint);
+
+            var pivot = new THREE.Object3D();
+            scene.add(pivot);
+            pivot.position.copy(mesh_Sun.position);
+            sphereMesh.parent = pivot;
+
+            orbits[orbits.length] = pivot;
+            orbitsX[orbitsX.length] = OrbitX.OrbitX;
+            orbitsY[orbitsY.length] = OrbitY.OrbitY;
+            orbitsZ[orbitsZ.length] = OrbitZ.OrbitZ;
+            axisX[axisX.length] = AxisRotationX.AxisRotationX;
+            axisY[axisY.length] = AxisRotationY.AxisRotationY;
+            axisZ[axisZ.length] = AxisRotationZ.AxisRotationZ;
+        }
+
+        function GetPlanetTexture()
+        {
+            switch(TextureOverride.TextureOverride)
+            {
+                case 1:
+                    return './images/sun.jpg';
+                    break;
+                case 2:
+                    return './images/mercury.png';
+                    break;
+                case 3:
+                    return './images/venus.jpg';
+                    break;
+                case 4:
+                    return './images/earth.jpg';
+                    break;
+                case 5:
+                    return './images/mars.jpg';
+                    break;
+                case 6:
+                    return './images/jupiter.jpg';
+                    break;
+                case 7:
+                    return './images/saturn.png';
+                    break;
+                case 8:
+                    return './images/uranus.png';
+                    break;
+                case 9:
+                    return './images/neptune.jpg';
+                    break;
+                default:
+                    return './images/sun.jpg';
+            }
+        }
+        
+        function animate()
+        {
+            mesh_Sun.rotation.y += 0.02 * TimeScale.TimeScale * 0.5;
+
+            if (ClearAll.ClearAll == 0)
+            {
+                Orbits();
+            }
+            else
+            {
+                Clear();
+            }
+
+            projCam.lookAt(mesh_Sun.position);
+
+            requestAnimationFrame( animate );
+            renderer.render( scene, projCam );
+        }
+
+        function Orbits()
+        {
+            for (let i = 0; i < orbits.length; i++)
+            {
+                orbits[i].rotation.x += orbitsX[i] * TimeScale.TimeScale * 0.5;
+                orbits[i].rotation.y += orbitsY[i] * TimeScale.TimeScale * 0.5;
+                orbits[i].rotation.z += orbitsZ[i] * TimeScale.TimeScale * 0.5;
+
+                planets[i].rotation.x += axisX[i] * TimeScale.TimeScale * 0.5;
+                planets[i].rotation.y += axisY[i] * TimeScale.TimeScale * 0.5;
+                planets[i].rotation.z += axisZ[i] * TimeScale.TimeScale * 0.5;
+            }
+        }
+
+        function Clear()
+        {
+            for (let i = 0; i < orbits.length; i++)
+            {
+                scene.remove(orbits.shift());
+                scene.remove(planets.shift());
+                orbitsX.shift();
+                orbitsY.shift();
+                orbitsZ.shift();
+                axisX.shift();
+                axisY.shift();
+                axisZ.shift();
+            }
+        }
+
+        animate();
+
+        </script>
+</body>
+</html>
